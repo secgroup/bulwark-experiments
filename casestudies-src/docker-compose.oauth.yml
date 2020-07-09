@@ -1,0 +1,95 @@
+version: "2.4"
+
+services:
+  # Note: all services are accessible through the proxy on port 8080 (see mitmproxy service below)
+
+  # Artificial RP (w/ reverse proxy and back channel proxy)
+  reverse-proxy: # proxy in front of the RP
+    build: ./common/mitmproxy
+    image: mitmproxy
+    command: -p 443 --mode reverse:http://integrator.com
+    volumes:
+      - ./common/mitmproxy/config:/home/mitmproxy/.mitmproxy
+      - ./common/mitmproxy/scripts:/home/mitmproxy/scripts
+    ports:
+      - "8082:8081" # web interface
+    links:
+      - "nginx-app:integrator.com"
+    networks:
+      default:
+        aliases:
+          - "integrator.com"
+  nginx-app: # nginx for static files
+    image: nginx
+    volumes:
+      - ./common/nginx.conf:/etc/nginx/nginx.conf
+      - ./artificial_rp:/var/www/html/
+  rp-app: # php application
+    build: ./artificial_rp
+    environment:
+      - HTTP_PROXY=backchan-proxy
+      - HTTP_PROXY_PORT=8080
+  mongo-app: # mongo database for the application
+    image: mongo
+  backchan-proxy: # fwd proxy for the back channels
+    image: mitmproxy
+    command: -p 8080
+    user: root
+    ports:
+      - "8083:8081" # web interface
+    depends_on:
+      - reverse-proxy
+
+  # Artificial IdP (w/ reverse proxy)
+  auth-server-proxy: # Reverse proxy in front of the idp
+    image: mitmproxy
+    # Decomment the following line to eneable reverse proxy monitor to the artificial IdP
+    command: -p 443 --mode reverse:https://auth-server.com  #-s /home/mitmproxy/scripts/monitor_idp.py
+    volumes:
+      - ./common/mitmproxy/config:/home/mitmproxy/.mitmproxy
+      - ./common/mitmproxy/scripts:/home/mitmproxy/scripts
+    ports:
+      - "8084:8081" # web interface
+    links:
+      - "auth-server:auth-server.com"
+    networks:
+      default:
+        aliases:
+          - "auth-server.com"
+  auth-server: # IdP application
+    build: ./artificial_idp
+    environment:
+      - "MONGO_HOST=mongo-idp"
+    command: >
+      sh -c "python main.py --init && python main.py --ssl --port 443"
+    depends_on:
+      - mongo-idp
+  mongo-idp: # IdP database
+    image: mongo
+
+
+  # Browser proxy to access the virtual network
+  mitmproxy:
+    image: mitmproxy
+    command: -p 8080
+    volumes:
+      - ./common/mitmproxy/config:/home/mitmproxy/.mitmproxy
+    networks:
+      - default
+    ports:
+      - "8080:8080" # http proxy
+      - "8081:8081" # web interface
+    depends_on:
+      - reverse-proxy
+
+
+  # Attacker controlled website
+  attacker:
+    image: php:7-fpm
+    command: php -S 0.0.0.0:80
+    volumes:
+      - ./common/attackercom:/var/www/html
+    networks:
+      default:
+        aliases:
+          - "attacker.com"

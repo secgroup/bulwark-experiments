@@ -1,0 +1,177 @@
+
+fun ipnpath(): Path [data]. (* = "/ext/modules/payment/paypal/standard_ipn.php" *)
+fun checkoutpath(): Path [data]. (* = "/checkout_confirmation.php" *)
+fun callbackpath(): Path [data]. (* = "/checkout_process.php" *)
+fun webscr(): Path [data]. (* = "/cgi-bin/webscr" *)
+
+free integratorcom: Host. (* = "integrator.com" *)
+free paypalcom: Host. (* = "www.sandbox.paypal.com"*)
+
+free integratorMerchantId: Id. (* = "alberto.lupo@business.example.com" *)
+
+
+type Amount.
+type Invoice.
+fun filledForm(Params): HTMLtag [data].
+fun webscrData(Id, Amount, Invoice, Uri, Uri): Params [data]. (* = {"business", "amount", "invoice", "notify_url", "return"} *)
+
+fun ipnData(Id, Amount, Invoice, Id, bitstring): Params [data].
+
+fun jslink(Uri):bitstring [data].
+fun verified():bitstring [data].
+fun success(): bitstring [data].
+fun empty(): bitstring [data].
+
+
+(* Queries *)
+event rp_begin(Id, Amount, Invoice, Uri, Uri).
+event rp_checkout_done().
+event rp_ipn_verified(Id, Amount, Invoice, Id).
+event paypal_checkout_complete(Id, Amount, Invoice, Id).
+event paypal_verified(Id, Amount, Invoice, Id).
+event ua_begin(Uri, Id, Amount, Invoice, Uri, Uri).
+event ua_end().
+
+query id:Id, amt:Amount, inv:Invoice, ntf:Uri, ret:Uri; event( rp_begin(id, amt, inv, ntf, ret) ).
+query event( rp_checkout_done( ) ).
+query id:Id, amt:Amount, inv:Invoice, payerid:Id; event( rp_ipn_verified(id, amt, inv, payerid) ).
+query id:Id, amt:Amount, inv:Invoice, payerid:Id; event( paypal_checkout_complete(id, amt, inv, payerid) ).
+query id:Id, amt:Amount, inv:Invoice, payerid:Id; event( paypal_verified(id, amt, inv, payerid) ).
+query payuri:Uri, id:Id, amt:Amount, inv:Invoice, ntf:Uri, ret:Uri; event( ua_begin(payuri, id, amt, inv, ntf, ret) ).
+query event( ua_end( ) ).
+
+query payuri:Uri, id:Id, amt:Amount, inv:Invoice, ntf:Uri, ret:Uri, payerid:Id;
+      event( paypal_checkout_complete(id, amt, inv, payerid) )
+   && event( paypal_verified(id, amt, inv, payerid) )
+   && event( rp_ipn_verified(id, amt, inv, payerid) ).
+
+
+query id:Id, amt:Amount, inv:Invoice, payerid:Id, ntf:Uri, ret:Uri;
+      event( rp_ipn_verified(id, amt, inv, payerid) )
+  ==> event( rp_begin(id, amt, inv, ntf, ret) ).
+
+query id:Id, amt:Amount, inv:Invoice, payerid:Id, ntf:Uri, ret:Uri;
+      event( rp_ipn_verified(id, amt, inv, payerid) )
+  ==> event( paypal_checkout_complete(id, amt, inv, payerid) ).
+
+
+(* Utils *)
+fun mkCookie(bitstring): Cookie [private].
+
+letfun session_start(cj:CookiePair, corr:bitstring) =
+  let cookiePair(session_cookie,path_cookie) = cj in
+  if session_cookie <> nullCookie() then
+    cj
+  else
+    cookiePair(mkCookie(corr), nullCookie()).
+
+let mkserver(h:Host) =
+   (new sk:privkey;
+     let pubk = pk(sk) in
+     insert serverIdentities(orig(https(),h), pubk,sk,xdr());
+     out(pub,pubk)).
+
+(* Processes *)
+table Transactions(Invoice, Amount).
+
+let RP(h:Host) =
+  let webscruri = uri(https(), paypalcom, webscr(), nullParams()) in
+  let returi = uri(https(), h, callbackpath(), nullParams()) in
+  let notifyuri = uri(https(), h, ipnpath(), nullParams()) in
+(
+  (in(httpServerRequest, (u:Uri, hs:Headers, =httpGet(), corr:bitstring));
+   let uri(=https(), =h, =checkoutpath(), =nullParams()) = u in
+   let cp = session_start(getCookie(hs), corr) in
+   new amt: Amount;
+   new inv: Invoice;
+   insert Transactions(inv, amt);
+   event rp_begin(integratorMerchantId, amt, inv, notifyuri, returi);
+   let resp = httpOk(formGen(filledForm(webscrData(integratorMerchantId, amt, inv, notifyuri, returi)), webscruri)) in
+   out(httpServerResponse, (u, resp, cp, unsafeUrl(), corr)))
+|
+  (in(httpServerRequest, (u:Uri, hs:Headers, =httpGet(), corr:bitstring));
+   let uri(=https(), =h, =callbackpath(), =nullParams()) = u in
+   let cp = getCookie(hs) in
+   event rp_checkout_done();
+   let resp = httpOk(success()) in
+   out(httpServerResponse, (u, resp, cp, unsafeUrl(), corr)))
+|
+  (in(httpServerRequest, (u:Uri, hs:Headers, req:HttpRequest, corr:bitstring));
+   let uri(=https(), =h, =ipnpath(), =nullParams()) = u in
+   let httpPost(ipnd) = req in
+   let ipnData(merchantId, amt, inv, payerId, verisign) = ipnd in
+   let cp = getCookie(hs) in
+   (* validate merchant id *)
+   if merchantId = integratorMerchantId then
+   (* validate invoice and amount *)
+   get Transactions(=inv, =amt) in
+   (* validate ipn data *)
+   new ncorr: bitstring;
+   out(httpServerRequest, (webscruri, headers(noneUri, nullCookiePair(), notajax()), httpPost(ipnd), ncorr));
+   in(httpServerResponse, (=webscruri, httpOk(=verified()), cpXX:CookiePair, rpXX:ReferrerPolicy, =ncorr));
+   event rp_ipn_verified(merchantId, amt, inv, payerId);
+   let resp = httpOk(empty()) in
+   out(httpServerResponse, (u, resp, cp, unsafeUrl(), corr)))).
+
+table ValidSignatures(bitstring, Id, Amount, Invoice, Id).
+
+let PayPal(h:Host) =
+(
+  (in(httpServerRequest, (u:Uri, hs:Headers, req:HttpRequest, corr:bitstring));
+   let uri(=https(), =h, =webscr(), =nullParams()) = u in
+   let httpPost(webscrData(mch, amt, inv, ntf, ret)) = req in
+   let cp = (*session_start(getCookie(hs), corr) in*) getCookie(hs) in
+   (* ... login/pay  ... *)
+   new verisign: bitstring;
+   new payerId: Id;
+   insert ValidSignatures(verisign, mch, amt, inv, payerId);
+   event paypal_checkout_complete(mch, amt, inv, payerId);
+    (* Send ipn *)
+    (let ipnd = ipnData(mch, amt, inv, payerId, verisign) in
+     new ncorr:bitstring;
+     out(httpServerRequest, (ntf, headers(noneUri, nullCookiePair(), notajax()), httpPost(ipnd), ncorr));
+     in(httpServerResponse, (=ntf, httpOk(=empty()), cpXX:CookiePair, rpXX:ReferrerPolicy, =ncorr)))
+    (* redirect to returi *)
+   |(let d = jslink(ret) in
+     out(httpServerResponse, (u, httpOk(d), cp, unsafeUrl(), corr))))
+|
+  (in(httpServerRequest, (u:Uri,  hs:Headers, req:HttpRequest, corr:bitstring));
+   let uri(=https(), =h, =webscr(), =nullParams()) = u in
+   let httpPost(ipnData(merchantId, amt, inv, payerId, verisign)) = req in
+   let cp = getCookie(hs) in
+   get ValidSignatures(=verisign, =merchantId, =amt, =inv, =payerId) in
+   event paypal_verified(merchantId, amt, inv, payerId);
+   let resp = httpOk(verified()) in
+   out(httpServerResponse, (u, resp, cp, unsafeUrl(), corr)))).
+
+
+let UA(b:Browser) =
+(
+   (let checkouturi = uri(https(), integratorcom, checkoutpath(), nullParams()) in
+    out(browserRequest(b), (checkouturi, httpGet())))
+ |
+   (in (newPage(b),(p:Page, u:Uri ,d:bitstring));
+    let uri(=https(), =integratorcom, =checkoutpath(), =nullParams()) = u in
+    let formGen(filledForm(webscrData(mch, amt, inv, ntf, ret)), payuri) = d in
+    event ua_begin(payuri, mch, amt, inv, ntf, ret);
+    out(pageClick(b), (p, payuri, httpPost(webscrData(mch, amt, inv, ntf, ret)))))
+ |
+   (in (newPage(b),(p:Page, u:Uri ,d:bitstring));
+    let uri(=https(), =paypalcom, =webscr(), =nullParams()) = u in
+    (* ... login/pay ... *)
+    let jslink(returi) = d in
+    out(pageClick(b), (p, returi, httpGet())))
+ |
+   (in (newPage(b),(p:Page, u:Uri ,d:bitstring));
+    let uri(=https(), =integratorcom, =callbackpath(), =nullParams()) = u in
+    let (=success()) = d in
+    event ua_end())).
+
+
+set reconstructDerivation = false.
+(* Network *)
+process
+        BrowserProcess() | HttpServer() | Network() |
+        mkserver(paypalcom) | !PayPal(paypalcom) |
+        mkserver(integratorcom) | !RP(integratorcom) |
+        (in(pub, b:Browser); (!NoServiceWorker(b) | !UA(b)))

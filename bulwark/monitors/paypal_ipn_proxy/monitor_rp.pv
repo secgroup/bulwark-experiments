@@ -1,0 +1,43 @@
+
+let RPMonitor(h:Host) = 
+ (in(httpServerRequest, (cs__1000:Uri, hs:Headers, cs__1001:HttpRequest, corr:bitstring));
+  let (uri(=https(), =h, =checkoutpath(), =nullParams())) = cs__1000 in
+  let (=httpGet()) = cs__1001 in
+  out(mC_1_out, (cs__1000, hs, cs__1001, corr));
+  in(mC_1_in, (cs__1102:Uri, cs__1100:HttpResponse, cp:CookiePair, cs__1101:ReferrerPolicy, =corr));
+  let (httpOk(formGen(filledForm(webscrData(=integratorMerchantId, amt, inv, =uri(https(), h, ipnpath(), nullParams()), =uri(https(), h, callbackpath(), nullParams()))), =uri(https(), paypalcom, webscr(), nullParams())))) = cs__1100 in
+  let (=unsafeUrl()) = cs__1101 in
+  let (=uri(https(), h, checkoutpath(), nullParams())) = cs__1102 in
+  insert MTransactions(inv, amt);
+  out(httpServerResponse, (cs__1102, cs__1100, cp, cs__1101, corr)))
+ |((in(httpServerRequest, (cs__1000:Uri, hs:Headers, cs__1001:HttpRequest, corr:bitstring));
+  let (uri(=https(), =h, =callbackpath(), =nullParams())) = cs__1000 in
+  let (=httpGet()) = cs__1001 in
+  out(mC_1_out, (cs__1000, hs, cs__1001, corr));
+  in(mC_1_in, (cs__1103:Uri, cs__1101:HttpResponse, cs__1100:CookiePair, cs__1102:ReferrerPolicy, =corr));
+  let (=getCookie(hs)) = cs__1100 in
+  let (=httpOk(success())) = cs__1101 in
+  let (=unsafeUrl()) = cs__1102 in
+  let (=uri(https(), h, callbackpath(), nullParams())) = cs__1103 in
+  out(httpServerResponse, (cs__1103, cs__1101, cs__1100, cs__1102, corr)))
+ |(in(httpServerRequest, (cs__1001:Uri, hs:Headers, cs__1000:HttpRequest, corr:bitstring));
+  let (httpPost(ipnData(merchantId, amt, inv, payerId, verisign))) = cs__1000 in
+  let (uri(=https(), =h, =ipnpath(), =nullParams())) = cs__1001 in
+  if merchantId = integratorMerchantId then
+  get MTransactions(=inv, =amt) in
+  out(mC_1_out, (cs__1001, hs, cs__1000, corr));
+  in(mC_2_in, (cs__1202:Uri, cs__1200:Headers, cs__1201:HttpRequest, ncorr:bitstring));
+  let (headers(noneUri, =nullCookiePair(), =notajax())) = cs__1200 in
+  let (=httpPost(ipnData(merchantId, amt, inv, payerId, verisign))) = cs__1201 in
+  let (=uri(https(), paypalcom, webscr(), nullParams())) = cs__1202 in
+  out(httpServerRequest, (cs__1202, cs__1200, cs__1201, ncorr));
+  in(httpServerResponse, (cs__1301:Uri, cs__1300:HttpResponse, cpXX:CookiePair, rpXX:ReferrerPolicy, =ncorr));
+  let (httpOk(=verified())) = cs__1300 in
+  let (=uri(https(), paypalcom, webscr(), nullParams())) = cs__1301 in
+  out(mC_2_out, (cs__1301, cs__1300, cpXX, rpXX, ncorr));
+  in(mC_1_in, (cs__1403:Uri, cs__1401:HttpResponse, cs__1400:CookiePair, cs__1402:ReferrerPolicy, =corr));
+  let (=getCookie(hs)) = cs__1400 in
+  let (=httpOk(empty())) = cs__1401 in
+  let (=unsafeUrl()) = cs__1402 in
+  let (=uri(https(), h, ipnpath(), nullParams())) = cs__1403 in
+  out(httpServerResponse, (cs__1403, cs__1401, cs__1400, cs__1402, corr)))).

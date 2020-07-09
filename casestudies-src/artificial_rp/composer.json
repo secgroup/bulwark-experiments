@@ -1,0 +1,10 @@
+{
+    "require": {
+        "mongodb/mongodb": "^1.4",
+        "facebook/graph-sdk": "^5.7",
+        "klein/klein": "^2.1",
+        "guzzlehttp/guzzle": ">=5.0 <6.0",
+        "vkcom/vk-php-sdk": "^5.100",
+        "google/apiclient": "^2.0"
+    }
+}

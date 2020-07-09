@@ -1,0 +1,197 @@
+
+fun loginpath(): Path[data]. (* = "/login" *)
+fun oauthpath(): Path[data]. (* = "/v[0-9]\.[0-9]/dialog/oauth" *)
+fun callbackpath(): Path[data]. (* = "/callback" *)
+fun tokenpath(): Path[data]. (* = /v[0-9]\.[0-9]/oauth/access_token*)
+
+fun codereqparams(Id, Uri, bitstring): Params[data]. (* = {"client_id", "redirect_uri", "state"} *)
+fun coderesparams(bitstring, bitstring): Params[data]. (* = {"code", "state"} *)
+fun tokenreqparams(Id, Uri, Secret, bitstring): Params[data]. (* = {"client_id", "redirect_uri", "client_secret", "code"} *)
+
+fun success(): bitstring[data].
+fun tokenresjson(bitstring): bitstring[data].
+fun pagewithlink(Uri): bitstring[data].
+
+const appid:Id.
+const appsecret:Secret [private].
+
+free ttpcom: Host.
+free integratorcom: Host.
+
+fun mkCookie(bitstring): Cookie [private].
+
+letfun session_start(cj:CookiePair, corr:bitstring) =
+  let cookiePair(session_cookie,path_cookie) = cj in
+  if session_cookie <> nullCookie() then
+    cj
+  else
+    cookiePair(mkCookie(corr), nullCookie()).
+
+let mkserver(h:Host) =
+   (new sk:privkey;
+     let pubk = pk(sk) in
+     insert serverIdentities(orig(https(),h), pubk,sk,xdr());
+     out(pub,pubk)).
+
+(* Setup a malicious server *)
+let MaliciousServer() = mkserver(mallory).
+
+(* App that leaks to the attacker everything it receives *)
+let AttackerLeakApp(h:Host) = 
+  !(in(httpServerRequest,(u:Uri,hs:Headers,r:HttpRequest,corr:bitstring));
+    let uri(=https(), =h, p, q) = u in
+    out(pub, (u, hs, r))).
+
+(* events *)
+event rp_begin(Host, Host, CookiePair, Id, Uri, bitstring).
+event rp_end(Host, Host, CookiePair,Id, Uri, Secret, bitstring, bitstring, bitstring).
+event idp_begin(Host, Id, Uri, bitstring).
+event idp_end(Host, Id, Secret, Uri, bitstring, bitstring).
+event ua_begin(Browser, Host, Host, Id, bitstring).
+event ua_end(Browser, Host, Host, bitstring, bitstring).
+
+(* reachability queries: every event must be reachable *)
+query h:Host,idph:Host, reduri:Uri, b:Browser, id:Id, c:CookiePair, sec:Secret,
+      state:bitstring, code:bitstring, token:bitstring;
+   event( rp_begin(h,idph,c,id,reduri,state) );
+   event( rp_end(h,idph,c,id,reduri,sec,state,code,token) );
+   event( idp_begin(idph,id,reduri,code) );
+   event( idp_end(idph,id,sec,reduri,code,token) );
+   event( ua_begin(b,h, idph, id, state) );
+   event( ua_end(b, h,idph,state, code) );
+   event( rp_end(h,idph,c,id,reduri,sec,state,code,token) ) &&
+   event( idp_end(idph,id,sec,reduri,code,token) ) &&
+   event( ua_end(b, h,idph,state, code) ).
+
+(* correspondence assertions *)
+query h:Host, idph:Host, c:CookiePair, aid:Id, sec:Secret,reduri:Uri, state:bitstring,code:bitstring, token:bitstring,
+      b:Browser;
+      event( ua_end(b, h, idph, state, code) ) && 
+      event( rp_end(h,idph,c,aid,reduri,sec,state,code,token) ) ==> event( rp_begin(h,idph,c,aid,reduri,state) ).
+
+query h:Host, reduri:Uri, aid:Id, sec:Secret, code:bitstring, state:bitstring, token:bitstring;
+      event( idp_end(h,aid,sec,reduri,code,token) ) ==> event( idp_begin(h,aid,reduri,code) ).
+
+query b:Browser, h:Host, idph:Host, id:Id, state:bitstring, code:bitstring;
+      event( ua_end(b, h,idph, state, code) ) ==> event( ua_begin(b, h,idph, id, state) ).
+
+query h:Host, idph:Host, c:CookiePair, code:bitstring, aid:Id, sec:Secret,reduri:Uri, state:bitstring, token:bitstring,
+      b:Browser;
+      event( ua_end(b, h, idph, state, code) ) &&
+      event( idp_end(idph,aid,sec,reduri,code,token) ) ==> event( rp_begin(h,idph,c,aid,reduri,state) ).
+
+query h:Host, idph:Host, c:CookiePair, aid:Id, sec:Secret, code:bitstring, state:bitstring, token:bitstring,reduri:Uri,
+      b:Browser;
+      event( ua_end(b, h, idph, state, code) ) &&
+      event( rp_end(h,idph,c,aid,reduri,sec,state,code,token) ) ==> event( idp_begin(idph,aid,reduri,code) ).
+
+query h:Host, idph:Host, b:Browser, c:CookiePair, aid:Id, code:bitstring, state:bitstring, token:bitstring, reduri:Uri;
+      event( ua_end(b, h, idph, state, code) )
+      ==> event( idp_begin(idph,aid,reduri,code) ) && event( rp_begin(h,idph,c,aid,reduri,state) ).
+
+query h:Host,idph:Host, b:Browser, c:CookiePair,aid:Id, sec:Secret, code:bitstring, state:bitstring, token:bitstring, reduri:Uri;
+      event( ua_end(b, h, idph, state, code) )
+      ==> event( rp_end(h,idph,c,aid,reduri,sec,state,code,token) )
+      && event( idp_end(idph,aid,sec,reduri, code,token) ).
+
+(* Secrecy of the tokens and states *)
+query code:bitstring, token:bitstring, b:Browser, h:Host, idph:Host, aid:Id, sec:Secret, c:CookiePair, state:bitstring, reduri:Uri;
+     event( ua_end(b, h,idph, state, code) )
+  && event( rp_end(h,idph,c,aid,reduri,sec,state,code,token) )
+  && event( idp_end(idph,aid,sec,reduri, code, token) )
+  && attacker(code);
+     event( ua_end(b, h,idph,state, code) )
+  && event( rp_end(h,idph,c,aid,reduri,sec,state,code,token) )
+  && event( idp_end(idph,aid,sec,reduri, code, token) )
+  && attacker(token);
+     event( ua_end(b, h,idph,state, code) )
+  && event( rp_end(h,idph,c,aid,reduri,sec,state,code,token) )
+  && event( idp_end(idph,aid,sec,reduri, code, token) )
+  && attacker(state).
+
+
+table RPSessions(CookiePair, bitstring).
+
+let RPApp(h:Host, fb:Host) =
+ let reduri = uri(https(), h, callbackpath(), nullParams()) in
+  (
+    (in(httpServerRequest,(u:Uri,hs:Headers,=httpGet(),corr:bitstring));
+     let uri(=https(), =h, =loginpath(), =nullParams()) = u in
+     let cj = getCookie(hs) in
+     let cp = session_start(cj, corr) in
+     new state:bitstring;
+     insert RPSessions(cp,state);
+     let fb_uri = uri(https(), fb, oauthpath(), codereqparams(appid, reduri, state)) in
+     event rp_begin(h, fb, cp, appid, reduri, state);
+     out(httpServerResponse, (u, httpOk(pagewithlink(fb_uri)), cp, unsafeUrl(), corr)))
+  |
+    (in(httpServerRequest,(u:Uri,hs:Headers,=httpGet(),corr:bitstring));
+     let uri(=https(), =h, =callbackpath(), coderesparams(code, state)) = u in
+     get RPSessions(=getCookie(hs), =state) in
+     let cp = getCookie(hs) in
+     let req_uri = uri(https(), fb, tokenpath(), tokenreqparams(appid, reduri, appsecret, code)) in
+     new ncorr:bitstring;
+     out(httpServerRequest,
+          (req_uri,headers(noneUri, nullCookiePair(), notajax()), httpGet(), ncorr));
+     in(httpServerResponse, (=req_uri, httpOk(tokenresjson(token)), cp1:CookiePair, rp1:ReferrerPolicy, =ncorr));
+     event rp_end(h, fb, cp, appid, reduri, appsecret, state, code, token);
+     out(httpServerResponse, (u, httpOk(success()), cp, noReferrer(), corr)))).
+
+
+table IDPAuthCodes(Host,Id, Uri, bitstring).
+
+let IDPApp(h:Host) =
+(
+    (in(httpServerRequest,(u:Uri,hs:Headers,req:HttpRequest,corr:bitstring));
+     let uri(=https(), =h, =oauthpath(), codereqparams(appidX, reduriX, stateX)) = u in
+     let cp = session_start(getCookie(hs), corr) in
+     new resp:HttpResponse;
+     out(httpServerResponse, (u, resp, cp, noReferrer(), corr)))
+|
+    (in(httpServerRequest,(u:Uri,hs:Headers,req:HttpRequest,corr:bitstring));
+     let uri(=https(), =h, =oauthpath(), codereqparams(=appid, reduri, state)) = u in
+     let uri(=https(), rh, rp, =nullParams()) = reduri in
+     let cp = session_start(getCookie(hs), corr) in
+     new code:bitstring;
+     insert IDPAuthCodes(h,appid, reduri, code);
+     let nuri = uri(https(), rh, rp, coderesparams(code, state)) in
+     event idp_begin(h, appid, reduri, code);
+     out(httpServerResponse, (u, httpRedirect(nuri), cp, unsafeUrl(), corr)))
+|
+    (in(httpServerRequest,(u:Uri,hs:Headers,=httpGet(),corr:bitstring));
+     let uri(=https(), =h, =tokenpath(), tokenreqparams(=appid, reduri, =appsecret, code)) = u in
+     get IDPAuthCodes(=h,=appid, =reduri, =code) in
+     new token:bitstring;
+     event idp_end(h, appid, appsecret, reduri, code, token);
+     out(httpServerResponse, (u, httpOk(tokenresjson(token)), getCookie(hs), unsafeUrl(), corr)))).
+
+
+let UA(b:Browser) =
+  (let loginURI = uri(https(), integratorcom, loginpath(), nullParams()) in
+   out(browserRequest(b), (loginURI, httpGet())))
+|
+  (in (newPage(b),(p1:Page,=uri(https(), integratorcom, loginpath(), nullParams()),pagewithlink(sso_uri)));
+   let uri(=https(), idp, =oauthpath(), codereqparams(aid, red_uri, state)) = sso_uri in
+   event ua_begin(b, integratorcom, idp, aid, state);
+   out(pageClick(b), (p1, sso_uri, httpGet())))
+|
+  (in(newPage(b),(p2:Page, reduri:Uri, =success()));
+   let uri(=https(), =integratorcom, =callbackpath(), coderesparams(code,state1)) = reduri in
+   event ua_end(b, integratorcom, ttpcom, state1, code)).
+
+
+let OAuth() =
+    (
+      mkserver(ttpcom) | mkserver(integratorcom)
+    | (!IDPApp(ttpcom))
+    | (!RPApp(integratorcom, ttpcom))
+    | !(in(pub, b:Browser);
+       (* !UAFetchResources(b,mallory) |*) !NoServiceWorker(b) | !UA(b))).
+
+set reconstructDerivation = false.
+process (
+    BrowserProcess() | HttpServer() | Network()
+    | OAuth()
+    | MaliciousServer()
+    | AttackerLeakApp(mallory)
+)

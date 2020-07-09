@@ -1,0 +1,30 @@
+
+let IDPMonitor(h:Host) = 
+ (in(httpServerRequest, (cs__1000:Uri, hs:Headers, req:HttpRequest, corr:bitstring));
+  let (uri(=https(), =h, =oauthpath(), codereqparams(appidX, reduriX, stateX))) = cs__1000 in
+  out(mC_1_out, (cs__1000, hs, req, corr));
+  in(mC_1_in, (cs__1101:Uri, resp:HttpResponse, cp:CookiePair, cs__1100:ReferrerPolicy, =corr));
+  let (=noReferrer()) = cs__1100 in
+  let (=uri(https(), h, oauthpath(), codereqparams(appidX, reduriX, stateX))) = cs__1101 in
+  out(httpServerResponse, (cs__1101, resp, cp, cs__1100, corr)))
+ |((in(httpServerRequest, (cs__1000:Uri, hs:Headers, req:HttpRequest, corr:bitstring));
+  let (uri(=https(), =h, =oauthpath(), codereqparams(=appid, uri(=https(), rh, rp, =nullParams()), state))) = cs__1000 in
+  out(mC_1_out, (cs__1000, hs, req, corr));
+  in(mC_1_in, (cs__1102:Uri, cs__1100:HttpResponse, cp:CookiePair, cs__1101:ReferrerPolicy, =corr));
+  let (httpRedirect(uri(=https(), =rh, =rp, coderesparams(code, =state)))) = cs__1100 in
+  let (=unsafeUrl()) = cs__1101 in
+  let (=uri(https(), h, oauthpath(), codereqparams(appid, uri(https(), rh, rp, nullParams()), state))) = cs__1102 in
+  insert MIDPAuthCodes(h, appid, uri(https(), rh, rp, nullParams()), code);
+  out(httpServerResponse, (cs__1102, cs__1100, cp, cs__1101, corr)))
+ |(in(httpServerRequest, (cs__1000:Uri, hs:Headers, cs__1001:HttpRequest, corr:bitstring));
+  let (uri(=https(), =h, =tokenpath(), tokenreqparams(=appid, reduri, =appsecret, code))) = cs__1000 in
+  let (=httpGet()) = cs__1001 in
+  get MIDPAuthCodes(=h, =appid, =reduri, =code) in
+  out(mC_1_out, (cs__1000, hs, cs__1001, corr));
+  in(mC_1_in, (cs__1203:Uri, cs__1200:HttpResponse, cs__1201:CookiePair, cs__1202:ReferrerPolicy, =corr));
+  let (httpOk(tokenresjson(token))) = cs__1200 in
+  let (=getCookie(hs)) = cs__1201 in
+  let (=unsafeUrl()) = cs__1202 in
+  let (=uri(https(), h, tokenpath(), tokenreqparams(appid, reduri, appsecret, code))) = cs__1203 in
+  out(httpServerResponse, (cs__1203, cs__1200, cs__1201, cs__1202, corr)))).
+

@@ -1,0 +1,27 @@
+
+let MonitorSW(b:Browser, h:Host, fb:Host) =
+ in(serviceWorkerFetch(b), (u:Uri, cs__1001, cs__1000, sw__p:Page, sw__aj:Ajax));
+  let (uri(=https(), refh, refp, refq)) = cs__1000 in
+  let (=httpGet()) = cs__1001 in
+  let (uri(=https(), =h, =loginredirectpath(), =nullParams())) = u in
+  (out(rawRequest(b), (u, cs__1001, cs__1000, sw__p, sw__aj));
+  in(serviceWorkerResult(b), (=u, cs__1100:HttpResponse, cs__1101:ReferrerPolicy, sw__foo:XDR, sw__corr:bitstring));
+  let (=httpRedirect(uri(https(), fb, oauthpath(), codereqparams(appid, uri(https(), h, callbackpath(), nullParams()), noState())))) = cs__1100 in
+  let (=unsafeUrl()) = cs__1101 in
+  out(serviceWorkerSendHttpResponse(b), (u, cs__1100, cs__1101, sw__foo, sw__corr)))
+ else let (uri(=https(), =h, =loginpath(), =nullParams())) = u in
+  (out(rawRequest(b), (u, cs__1001, cs__1000, sw__p, sw__aj));
+  in(serviceWorkerResult(b), (=u, cs__1100:HttpResponse, cs__1101:ReferrerPolicy, sw__foo:XDR, sw__corr:bitstring));
+  let (=httpOk(pagewithlink(uri(https(), fb, oauthpath(), codereqparams(appid, uri(https(), h, callbackpath(), nullParams()), noState()))))) = cs__1100 in
+  let (=unsafeUrl()) = cs__1101 in
+  insert MRPSessions(noState());
+  out(serviceWorkerSendHttpResponse(b), (u, cs__1100, cs__1101, sw__foo, sw__corr)))
+ else let (uri(=https(), =h, =callbackpath(), coderesparams(code, state))) = u in
+  (get MRPSessions(=state) in
+  if refh = h || refh = fb then
+  out(rawRequest(b), (u, cs__1001, cs__1000, sw__p, sw__aj));
+  in(serviceWorkerResult(b), (=u, cs__1200:HttpResponse, cs__1201:ReferrerPolicy, sw__foo:XDR, sw__corr:bitstring));
+  let (=httpOk(success())) = cs__1200 in
+  let (=noReferrer()) = cs__1201 in
+  out(serviceWorkerSendHttpResponse(b), (u, cs__1200, cs__1201, sw__foo, sw__corr)))
+ else event forwardRequest().

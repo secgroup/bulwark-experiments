@@ -1,0 +1,66 @@
+version: "3"
+
+services:
+  # Note: all services are accessible through the proxy on port 9090 (see mitmbrowser service below)
+
+  # Integrator
+  integrator:
+    build: ./oscommerce
+    image: "oscommerce:2.3.1"
+    environment:
+      - "APPHTTP=http"
+      - "APPHOST=34.89.219.37"
+      - "APPPORT=80"
+      - "HTTP_PROXY=http://mitmback:8080"
+      - "HTTPS_PROXY=http://mitmback:8080"
+      - "http_proxy=http://mitmback:8080"
+      - "https_proxy=http://mitmback:8080"
+  
+  # Reverse Proxy
+  mitmrev:
+    build: ./common/mitmproxy
+    image: mitmproxy
+    volumes:
+     - ./common/mitmproxy/config:/home/mitmproxy/.mitmproxy
+     - ./common/mitmproxy/scripts:/home/mitmproxy/scripts
+    ports:
+     - "80:80" # website
+     - "8081:8081" # web interface
+    command: >
+      -p 80 --mode reverse:http://integrator.com
+      --set block_global=false
+#     -s /home/mitmproxy/scripts/monitor_rp.py
+    links:
+     - "integrator:integrator.com"
+    depends_on:
+     - mitmback
+
+  # Proxy for back channels
+  mitmback:
+    image: mitmproxy
+    volumes:
+     - ./common/mitmproxy/config:/home/mitmproxy/.mitmproxy
+     - ./common/mitmproxy/scripts:/home/mitmproxy/scripts
+    ports:
+     - "8082:8081" # web interface
+    command: >
+      -p 8080
+#     -s /home/mitmproxy/scripts/monitor_backchan.py
+
+  # Browser reverse proxy
+  mitmbrowser:
+    image: mitmproxy
+    volumes:
+      - ./common/mitmproxy/config:/home/mitmproxy/.mitmproxy
+      - ./common/mitmproxy/scripts:/home/mitmproxy/scripts
+    ports:
+     - "9090:8080"
+     - "8083:8081" # web interface
+    links:
+     - "mitmrev:integrator.com"
+    command: -p 8080
+
+  # monitor mongodb
+  mongo-rp:
+    image: mongo
+ 
