@@ -4,7 +4,7 @@ The lack of the `state` parameter in the Overleaf implementation of
 OAuth 2.0 with Google introduced known vulnerabilities.
 In particular it was possible to mount a session-swapping attack through a CSRF on the Google Oauth2 callback page at `/users/auth/google_oauth2/callback`. A PoC attack can be found in the [poc.html](./poc.html) file.
 
-The vulneability have been reported to Overleaf developers, that acknowledged the vulnerability and fixed the issue by adding the `state` parameter.
+The vulnerability have been reported to Overleaf developers, that acknowledged the vulnerability and fixed the issue by adding the `state` parameter.
 
 ## Monitor
 
